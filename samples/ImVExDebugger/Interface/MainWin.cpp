@@ -7,78 +7,6 @@
 #include "../Utils/Utils.h"
 #include <stb_image.h>
 
-// for test
-std::map<int, ExceptionAddressCount> ExcpAssocTests =
-{
-    {0, 
-        { 
-            { reinterpret_cast<void*>( 0x111111 ), 
-                {
-                    145, 15888, {}
-                },
-            }, 
-            { reinterpret_cast<void*>( 0x1d1112 ),
-                {
-                    478, 12088, {}
-                },
-            },
-            { reinterpret_cast<void*>( 0x1d1113 ),
-                {
-                    125, 32898, {}
-                },
-            },
-            { reinterpret_cast<void*>( 0x1d1114 ),
-                {
-                    4825, 13213, {}
-                },
-            },
-            { reinterpret_cast<void*>( 0x1d1115 ),
-                {
-                    941, 15888, {}
-                },
-            },
-            { reinterpret_cast<void*>( 0x1d1116 ),
-                {
-                    325, 148744, {}
-                },
-            },
-        } 
-    },
-    {2, 
-        { 
-            { reinterpret_cast<void*>( 0xAAAAAAA ),
-                {
-                    941, 15888, {}
-                },
-            },
-    
-            { reinterpret_cast<void*>( 0x9999999 ),
-                {
-                    941, 15888, {}
-                },
-            },
-
-        } 
-    },
-    {4,  
-        {
-            { reinterpret_cast<void*>( 0xA919999 ),
-                {
-                    941, 15888, {}
-                },
-            },
-        }
-    },
-
-};
-std::map<int, uintptr_t> AddressAssocList =
-{
-    {0, 0x158976A},
-    {2, 0xC580061},
-    {4, 0},
-    {8, 0}
-};
-
 void Gui::Main( GLWindow* Instance, bool * pVisible )
 {
     static bool once = true;
@@ -124,67 +52,85 @@ void Gui::Main( GLWindow* Instance, bool * pVisible )
 
         if ( ImGui::BeginTabBar( "#TabBar", TabBarFlags ) )
         {
-            auto inc = 0;
+            VExDebugger::CallBreakpointList( []( TBreakpointList BreakpointList ) -> void {
 
-            for ( const auto& ExcpAssoc : VExDebugger::GetExceptionAssocAddress( ) )
-            //for ( const auto& ExcpAssoc : ExcpAssocTests )
-            {
-                const auto Address  = VExDebugger::GetAddressAssocException( )[ ExcpAssoc.first ];
-                //const auto Address  = AddressAssocList[ ExcpAssoc.first ];
+                auto inc = 0;
 
-                if ( !Address )
-                    continue;
-
-                auto HexStr         = "0x" + Utils::ValToHexStr( Address );
-
-                if ( ImGui::BeginTabItem( ( std::to_string( ++inc ) + " | " + HexStr ).c_str( ) ) )
+                for ( const auto& [ Address, BpInfo ] : BreakpointList )
                 {
-                    auto NumItems = ExcpAssoc.first;
-                       
-                    if ( ImGui::Button( ( "Remove " + HexStr ).c_str() , { 320.f, 25.f } ) )
-                        VExDebugger::RemoveMonitorAddress( Address );
+                    if ( !Address )
+                        continue;
 
-                    std::string SaveLogsStr{};
+                    if ( BpInfo.Method != BkpMethod::Hardware )             // only support hardware breakpoint
+				        continue;
 
-                    if ( SaveLogs )
-                        SaveLogsStr.append( "\n# List for " + HexStr + "\n" );
+                    auto const HexStr = "0x" + Utils::ValToHexStr( Address );
 
-                    for ( const auto& ExcpInfo : ExcpAssoc.second )
+                    if ( ImGui::BeginTabItem( ( std::to_string( ++inc ) + " | " + HexStr ).c_str( ) ) )
                     {
-                        ImGui::PushID( 18 * NumItems );
-                        const auto hue = NumItems * 0.05f;
-                        ImGui::PushStyleColor( ImGuiCol_ButtonHovered,  static_cast<ImVec4>( ImColor::HSV( hue, 0.7f, 0.7f ) ) );
-                        ImGui::PushStyleColor( ImGuiCol_ButtonActive,   static_cast<ImVec4>( ImColor::HSV( hue, 0.8f, 0.8f ) ) );
 
-                        char format[ 100 ]{};
-                        sprintf_s( format, sizeof( format ), "Count %8d Address: 0x%p", (int)ExcpInfo.second.Count, ExcpInfo.first );
+                        if ( ImGui::Button( ( "Remove " + HexStr ).c_str( ), { 320.f, 25.f } ) )
+                            VExDebugger::RemoveMonitorAddress( Address );
 
-                        if ( SaveLogs )
-                            SaveLogsStr.append( std::string( format ) + "\n" );
+                        VExDebugger::CallAssocExceptionList( [&]( TAssocExceptionList AssocExceptionList ) -> void {
+
+			                auto ItExceptionList  = AssocExceptionList.find( Address );
+
+                            if ( ItExceptionList == AssocExceptionList.end( ) )
+                                return;
+
+                            auto& ExceptionList     = ItExceptionList->second;
+
+                            std::string SaveLogsStr{};
+
+                            if ( SaveLogs )
+                                SaveLogsStr.append( "\n# List for " + HexStr + "\n" );
+
+                            auto NumItems = ExceptionList.size( );
+
+                            for ( const auto& [ ExceptionAddress, ExceptionInfo ] : ExceptionList )
+                            {
+                                ImGui::PushID( 18 * NumItems );
+
+                                const auto hue = NumItems * 0.05f;
+
+                                ImGui::PushStyleColor( ImGuiCol_ButtonHovered,  static_cast<ImVec4>( ImColor::HSV( hue, 0.7f, 0.7f ) ) );
+
+                                ImGui::PushStyleColor( ImGuiCol_ButtonActive,   static_cast<ImVec4>( ImColor::HSV( hue, 0.8f, 0.8f ) ) );
+
+                                char format[ 100 ]{};
+                                sprintf_s( format, sizeof( format ), "Count %8d Address: 0x%p", (int)ExceptionInfo.Details.Count, (void*)ExceptionAddress );
+
+                                if ( SaveLogs )
+                                    SaveLogsStr.append( std::string( format ) + "\n" );
                             
-                        if ( ImGui::Button( format, ImVec2( 320.f, 20.f ) ) )
-                            printf( "clicked 0x%p\n", ExcpInfo.first );
+                                if ( ImGui::Button( format, ImVec2( 320.f, 20.f ) ) )
+                                    printf( "clicked 0x%p\n", ExceptionAddress );
                             
-                        ImGui::PopStyleColor( 2 );
-                        ImGui::PopID( );
+                                ImGui::PopStyleColor( 2 );
+                                ImGui::PopID( );
 
-                        ++NumItems;
+                                ++NumItems;
+                            }
+
+                            if ( SaveLogs )
+                            {
+                                Utils::CreateFileFromText( L"VExDebugger_" + std::wstring( HexStr.begin(), HexStr.end() ) + L".log", SaveLogsStr );
+                                SaveLogsStr.clear( );
+                            }
+
+                        } );
+
+                        ImGui::EndTabItem( );
                     }
-
-                    if ( SaveLogs )
-                    {
-                        Utils::CreateFileFromText( L"VExDebugger_" + std::wstring( HexStr.begin(), HexStr.end() ) + L".log", SaveLogsStr );
-                        SaveLogsStr.clear( );
-                    }
-
-                    ImGui::EndTabItem( );
                 }
-            }
+
+            } );
+
             if ( SaveLogs )
             {
                 SaveLogs = false;
             }
-
 
             ImGui::EndTabBar( );
         }      
@@ -202,7 +148,9 @@ void Gui::Main( GLWindow* Instance, bool * pVisible )
 
         ImGui::SameLine( 115.f );
 
-        const char* types[] = { "Execute", "Read/Write","Write" };
+        const char* types[] = { 
+            //"Execute", 
+            "Read/Write","Write" };
         const char* sizes[] = { "Byte 1","Byte 2","Byte 8","Byte 4" };
         static int TypeCurrent = 0;
         static int SizeCurrent = 0;
@@ -233,7 +181,7 @@ void Gui::Main( GLWindow* Instance, bool * pVisible )
                     static_cast<uintptr_t>( strtoul( StrAddress.c_str( ), nullptr, 16 ) ) : static_cast<uintptr_t>( strtoull( StrAddress.c_str( ), nullptr, 16 ) );
                 
                 if ( ResultConverted )
-                    VExDebugger::StartMonitorAddress( ResultConverted, static_cast<HwbkpType>( TypeCurrent ), static_cast<HwbkpSize>( SizeCurrent ) );
+                    VExDebugger::StartMonitorAddress( ResultConverted, static_cast<BkpTrigger>( TypeCurrent + 1 ), static_cast<BkpSize>( SizeCurrent ) );
             }
         }
 

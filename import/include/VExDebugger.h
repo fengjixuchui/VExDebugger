@@ -2,25 +2,17 @@
 #include <Windows.h>
 #include <iostream>
 #include <map>
-#include <unordered_map>
+#include <vector>
+#include <functional>
 
-struct CatchedDetails
-{
-	size_t Count		= 0;
-	size_t ThreadId		= 0;
-	CONTEXT Ctx			= {};
-};
-
-using ExceptionAddressCount = std::unordered_map<void*, CatchedDetails>;
-
-enum class HwbkpType
+enum class BkpTrigger
 {
 	Execute,
 	ReadWrite,
 	Write
 };
 
-enum class HwbkpSize
+enum class BkpSize
 {
 	Size_1,
 	Size_2,
@@ -36,17 +28,57 @@ enum class HandlerType
 	KiUserExceptionDispatcherHook,
 };
 
+enum class BkpMethod
+{
+	Hardware,
+};
+
+struct BkpInfo
+{
+	BkpMethod	Method		= BkpMethod::Hardware;
+
+	BkpTrigger	Trigger		= BkpTrigger::Execute;
+
+	BkpSize		Size		= BkpSize::Size_1;
+
+	int Pos = 0;
+};
+	
+struct CatchedDetails
+{
+	size_t		Count		= 0;
+
+	size_t		ThreadId	= 0;
+
+	CONTEXT		Ctx			= {};
+};
+
+struct ExceptionInfo
+{
+	CatchedDetails Details{};
+};
+
+using ExceptionInfoList				= std::map<uintptr_t, ExceptionInfo>;
+
+using TBreakpointList				= std::map<uintptr_t, BkpInfo>;
+
+using TAssocExceptionList			= std::map<uintptr_t, ExceptionInfoList>;
+
 namespace VExDebugger
 {
-	bool Init( HandlerType Type = HandlerType::VectoredExceptionHandler, bool SpoofHwbkp = false, bool Logs = false );
+	bool Init( HandlerType Type = HandlerType::VectoredExceptionHandler, bool Logs = false );
 
-	std::map<int, ExceptionAddressCount>& GetExceptionAssocAddress( );
+	void CallAssocExceptionList( const std::function<void( TAssocExceptionList& )>& lpEnumFunc );
 
-	std::map<int, uintptr_t>& GetAddressAssocException( );
+	void CallBreakpointList( const std::function<void( TBreakpointList& )>& lpEnumFunc );
 
-	bool StartMonitorAddress( uintptr_t Address, HwbkpType Type, HwbkpSize Size );
+	bool StartMonitorAddress( uintptr_t Address, BkpTrigger Trigger, BkpSize Size );
 	
 	void RemoveMonitorAddress( uintptr_t Address );
-	
-	void PrintExceptions( );
+
+	template <typename T>
+	inline bool StartMonitorAddress( T Address, BkpTrigger Trigger, BkpSize Size )
+	{
+		return StartMonitorAddress( (uintptr_t)Address, Trigger, Size );
+	}
 }

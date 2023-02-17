@@ -4,19 +4,15 @@
 #include "../Tools/Logs.h"
 #include "../Tools/WinWrap.h"
 
-
-#define SET_TRAP_FLAG(ctx) ctx->EFlags |= (1 << 8);
-#define UNSET_TRAP_FLAG(ctx) ctx->EFlags &= ~(1 << 8);
-
 HwBkp* g_CurrentHwBreakPt = nullptr;
 
-HwBkp::HwBkp( const uintptr_t Address, const HwbkpSize Size, const HwbkpType Type, const bool Add )
+HwBkp::HwBkp( const uintptr_t Address, const BkpSize Size, const BkpTrigger Trigger, const bool Add )
 {
 	this->Address		= Address;
 
 	this->Size			= Size;
 
-	this->Type			= Type;
+	this->Trigger		= Trigger;
 
 	this->Add			= Add;
 
@@ -28,14 +24,34 @@ HwBkp* HwBkp::i( )
 	return g_CurrentHwBreakPt;
 }
 
-bool& HwBkp::AddBkp( )
+void HwBkp::SetRemove( )
 {
-	return Add;
+	Add = false;
 }
 
 uintptr_t HwBkp::GetAddress( ) const
 {
 	return Address;
+}
+
+BkpTrigger HwBkp::GetTriggerType( ) const
+{
+	return Trigger;
+}
+
+BkpSize HwBkp::GetSize( ) const
+{
+	return Size;
+}
+
+int HwBkp::GetPos( ) const
+{
+	return DbgRegAvailable;
+}
+
+bool HwBkp::GetAnySuccess( ) const
+{
+	return AnySuccess;
 }
 
 #ifdef _WIN64
@@ -103,7 +119,6 @@ bool HwBkp::ApplyHwbkpDebugConfig( const HANDLE hThread, uint32_t ThreadId, bool
 				pDbgReg[ i ]	= 0;
 
 				DrBusy[ i ]		= false;
-
 			}
 
 		Ctx.Dr7 &= ~( 1 << bFlagPos );
@@ -139,15 +154,15 @@ bool HwBkp::ApplyHwbkpDebugConfig( const HANDLE hThread, uint32_t ThreadId, bool
 
 		auto DbgCondition	= 0;
 
-		switch ( Type )
+		switch ( Trigger )
 		{
-		case HwbkpType::Execute:
+		case BkpTrigger::Execute:
 			DbgCondition	= 0;
 			break;
-		case HwbkpType::ReadWrite:
+		case BkpTrigger::ReadWrite:
 			DbgCondition	= 3;
 			break;
-		case HwbkpType::Write:
+		case BkpTrigger::Write:
 			DbgCondition	= 1;
 			break;
 		}
@@ -166,9 +181,12 @@ bool HwBkp::ApplyHwbkpDebugConfig( const HANDLE hThread, uint32_t ThreadId, bool
 	// set changes
 	if ( !WinWrap::SetContextThread( hThread, &Ctx ) )
 	{
-		printf( "fail set context\n" );
+		log_file( "fail set context" );
 		return false;
 	}
+
+	if ( !AnySuccess )
+		AnySuccess = true;
 
 	// run again
 	Resume( );
